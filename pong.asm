@@ -21,8 +21,8 @@ section .data
 	FLAG_CENTER:	equ 0x2FFF0000	
 
 	;; Window dimensions (in pixels)
-	WIDTH:		equ 1000
-	HEIGHT:		equ 700
+	WIDTH:		equ 1500
+	HEIGHT:		equ 800
 
 	;; Reserve some memory for SDL struct pointers
 	;; QWords, 32-bit/e
@@ -39,7 +39,7 @@ section .data
 	QUO:		equ 0x22
 
 	;; Welcome message
-	WLCME:		db "{C} Piotr K. Wyrwas 2022 ", QUO, "The Mistake" , QUO, 10, 0
+	WLCME:		db "Welcome to Piotr K. Wyrwas' ", QUO, "The Mistake" , QUO, 10, 0
 
 	;; Specific SDL errors
 	INITF:		db "Error: Failed to initialize SDL.", 10, 0
@@ -50,8 +50,6 @@ section .data
 	DINIT:		db "Debug: SDL Initialized.", 10, 0
 	DWINDOW:	db "Debug: Window created.", 10, 0
 	DRENDER:	db "Debug: Renderer created.", 10, 0
-	DKBD:		db "Debug: A keyboard event occured.", 10, 0
-	DTICK:		db "Debug: A delay tick occured", 10, 0
 
 	;; SDL error string pointer
 	SDL_SPTR:	dq 0
@@ -81,7 +79,7 @@ section .data
 		db 255
 
 	;; Paddle Width
-	PW:	equ 20
+	PW:	equ 8
 
 	;; Paddle Height
 	PH:	equ 100
@@ -237,6 +235,8 @@ section .text
 		mov eax, -1
 		imul dword [VELX]
 		mov dword [VELX], eax
+
+		add dword [XB], PW
 
 		inc dword [SCORE]
 
@@ -406,6 +406,8 @@ section .text
 
 		;; Update the Y of the right paddle
 		mov dword [RPY], eax
+
+		.end:
 
 		;; Destroy Stack F.
 		mov rsp, rbp
@@ -588,8 +590,6 @@ section .text
 
 		;; When a key was released, set the left paddle velocity to 0 (make it stop)
 		.kup:
-			lea rdi, DKBD
-			call printf
 			mov dword [LPV], 0
 
 		jmp .end
@@ -643,7 +643,7 @@ section .text
 
 		.loop:
 			inc rax
-			cmp rax, 5000000
+			cmp rax, 2000000
 			jl .loop
 
 		;; Clear the frame
