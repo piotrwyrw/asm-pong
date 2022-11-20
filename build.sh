@@ -11,4 +11,6 @@ mkdir build
 nasm -f elf64 pong.asm -o build/pong.o
 
 # Link to external libraries using GCC
-gcc -no-pie build/pong.o -o build/pong -lSDL2
+gcc -c score.c -o build/score.o
+gcc -c font.c -o build/font.o
+gcc -no-pie build/pong.o build/score.o build/font.o -o build/pong -lSDL2

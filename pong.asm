@@ -114,9 +114,16 @@ section .data
 	XB:	dd XBORG
 	YB:	dd YBORG
 
+	;; Orginal ball velocities
+	VELXORG:	equ 1
+	VELYORG:	equ 1
+
 	;; Ball velocities
-	VELX:	dd -1
-	VELY:	dd 1
+	VELX:	dd VELXORG
+	VELY:	dd VELYORG
+
+	;; Score
+	SCORE:	dd 0
 
 section .bss
 	;; Reserve some memory for the SDL_Event struct
@@ -230,6 +237,8 @@ section .text
 		mov eax, -1
 		imul dword [VELX]
 		mov dword [VELX], eax
+
+		inc dword [SCORE]
 
 		;; Right paddle
 		.cmp_rpad:
@@ -397,7 +406,6 @@ section .text
 
 		;; Update the Y of the right paddle
 		mov dword [RPY], eax
-		;;mov dword [LPY], eax
 
 		;; Destroy Stack F.
 		mov rsp, rbp
@@ -508,6 +516,13 @@ section .text
 		lea rsi, RECT
 		call SDL_RenderFillRect
 
+		;; Draw the player's score
+		mov rdi, [RENDERER]
+		mov rsi, [SCORE]
+		mov rdx, WIDTH
+		mov rcx, HEIGHT
+		call render_score
+
 		;; Commit all changes to the screen buffer
 		mov rdi, [RENDERER]
 		call SDL_RenderPresent
@@ -602,6 +617,10 @@ section .text
 		;; Put the back back at its origin (center of the screen)
 		mov dword [XB], XBORG
 		mov dword [YB], YBORG
+		mov dword [VELX], VELXORG
+		mov dword [VELY], VELYORG
+
+		mov dword [SCORE], 0
 
 		.end:
 

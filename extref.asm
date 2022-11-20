@@ -24,3 +24,6 @@
 ;; GNU C Library
 [extern printf]
 [extern exit]
+
+;; C reference to the score renderer
+[extern render_score]
