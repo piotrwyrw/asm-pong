@@ -12,8 +12,10 @@ section .data
 	IFLAG_EVENT:	equ 0x00004000
 	IFLAG_FINAL:	equ IFLAG_VIDEO | IFLAG_EVENT
 
-	;; SDL Quit event
+	;; SDL Event Types
 	EVT_QUIT:	equ 0x100
+	EVT_KBD1:	equ 0x300
+	EVT_KBD2:	equ 0x301
 
 	;; Tells the API to put the window at the center of the screen
 	FLAG_CENTER:	equ 0x2FFF0000	
@@ -33,7 +35,13 @@ section .data
 	;; Generic SDL error format
 	GSDLF:		db "SDL Error: %s", 10, 0
 
-	;; Specifis SDL errors
+	;; Hex code for double quotes (") in the ASCII table
+	QUO:		equ 0x22
+
+	;; Welcome message
+	WLCME:		db "{C} Piotr K. Wyrwas 2022 ", QUO, "The Mistake" , QUO, 10, 0
+
+	;; Specific SDL errors
 	INITF:		db "Error: Failed to initialize SDL.", 10, 0
 	WINDOWF:	db "Error: Failed to create a window.", 10, 0
 	RENDERF:	db "Error: Failed to create a renderer.", 10, 0
@@ -42,12 +50,21 @@ section .data
 	DINIT:		db "Debug: SDL Initialized.", 10, 0
 	DWINDOW:	db "Debug: Window created.", 10, 0
 	DRENDER:	db "Debug: Renderer created.", 10, 0
+	DKBD:		db "Debug: A keyboard event occured.", 10, 0
+	DTICK:		db "Debug: A delay tick occured", 10, 0
 
 	;; SDL error string pointer
 	SDL_SPTR:	dq 0
 
 	;; Offset from the event pointer to the event type
 	EVTT_OFF:	equ 0
+
+	;; Keyboard event offsets
+	KEVT_KSYM:	equ 16
+
+	;; Keyboard stuff, Pulled from the SDL source code
+	SCANCODE_UP:	equ 82
+	SCANCODE_DOWN:	equ 81
 
 	;; Background color information (black)
 	BACKGROUND:
@@ -63,20 +80,41 @@ section .data
 		db 255
 		db 255
 
+	;; Paddle Width
 	PW:	equ 20
+
+	;; Paddle Height
 	PH:	equ 100
+
+	;; Paddle Origin (Y-axis)
 	YORG:	equ HEIGHT / 2 - PH / 2
 
+	;; Left paddle location (x and y)
 	LPX:	dd 0
 	LPY:	dd 520
 
+	;; Left paddle velocity
+	LPV:	dd 0
+
+	;; Right paddle location (x, y)
 	RPX:	dd WIDTH - PW
 	RPY:	dd 350
 
-	BS:	equ 10
-	XB:	dd WIDTH / 2 - BS / 2
-	YB:	dd HEIGHT / 2 - BS / 2
+	;; Right paddle velocity
+	RPV:	dd 0
 
+	;; Ball size
+	BS:	equ 10
+
+	;; Ball origin
+	XBORG:	equ WIDTH / 2 - BS / 2
+	YBORG:	equ HEIGHT / 2 - BS / 2
+
+	;; Variable ball location
+	XB:	dd XBORG
+	YB:	dd YBORG
+
+	;; Ball velocities
 	VELX:	dd -1
 	VELY:	dd 1
 
@@ -113,6 +151,7 @@ section .text
 		mov rsi, [SDL_SPTR]
 		call printf
 
+	;; Exit the program after cleaning up all SDL* objects
 	clean_exit:
 		push rbp
 		mov rbp, rsp
@@ -137,6 +176,8 @@ section .text
 		mov rdi, 0
 		call exit
 
+	;; Check for any collision (window edges + paddles) and alter the velocities accordingly
+	;; (ball)
 	collide:
 		;; New stack frame
 		push rbp
@@ -230,6 +271,7 @@ section .text
 
 		ret
 
+	;; Ball Apply Velocity
 	bapplyvel:
 		;: Do I still have to explain this?
 		push rbp
@@ -253,6 +295,116 @@ section .text
 		pop rbp
 
 		ret
+
+	;; EDI - Value to clamp, ESI - Min value, EDX - Max value
+	;; Ensures the value stays within the given limits
+	clamp:
+		;; Frame
+		push rbp
+		mov rbp, rsp
+
+		cmp edi, esi	;; }
+		jge .cmp_max	;; } eax = esi (min. value) if edi (input value) is lower than esi (min val.)
+		mov eax, esi	;; }
+
+		jmp .end
+
+		.cmp_max:
+		cmp edi, edx	;; }
+		jle .ncn	;; } eax = edx (max value) if edi (input) is greater than edx (max val.)
+		mov eax, edx	;; }
+
+		jmp .end
+		
+		;; No Correction Needed
+		.ncn:
+		mov eax, edi
+
+		.end:
+
+		;; End of S. Frame
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
+	;; Left Paddle velocity
+	lpvel:
+		;; Stack frame
+		push rbp
+		mov rbp, rsp
+
+		;; A bit of flow control code here
+		mov eax, [LPV]
+		cmp eax, 0
+
+		;; Downward acceleration
+		jg .accel_dw
+
+		;; Upward acceleration
+		jl .accel_uw
+
+		;; No velocity
+		jmp .end
+		
+		.accel_dw:
+			mov eax, [LPY]		;; } eax = Left paddle Y - Paddle height
+			add eax, PH		;; } = Y coord. at the bottom of the paddle
+
+			cmp eax, HEIGHT		;; } Check collision with the bottom edge
+			jge .resv		;; } of the window (screen)
+
+			mov eax, [LPY]		;; }
+			inc eax			;; } Apply a downward-facing motion
+			mov dword [LPY], eax	;; }
+		jmp .end
+	
+		.accel_uw:
+			mov eax, [LPY]		;; } eax = Top of the left paddle
+
+			cmp eax, 0		;; } Check collision with top screen edge
+			jle .resv		;; }
+
+			mov eax, [LPY]		;; }
+			dec eax			;; } Apply an upward motion
+			mov dword [LPY], eax	;; }
+		jmp .end
+
+		;; Reset the velocity
+		.resv:
+			mov dword [LPV], 0
+
+		;; Exit (Fall through from above)
+		.end:
+
+		;; End of stack frame
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
+	;; Automatic Right Paddle
+	arpad:
+		;; New Stack Frame
+		push rbp
+		mov rbp, rsp
+
+		mov edi, [YB]		;; We want to clamp the Y coordinate of the ball
+		mov esi, 0		;; Between 0 (top of the screen)
+		mov edx, HEIGHT		;; }
+		sub edx, PH		;; } And (screen height - paddle height)
+		call clamp		;; Call the clamp function
+
+		;; Update the Y of the right paddle
+		mov dword [RPY], eax
+		;;mov dword [LPY], eax
+
+		;; Destroy Stack F.
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
 
 	setcolor:
 		;; Set up the stack frame
@@ -366,10 +518,128 @@ section .text
 
 		ret
 
+	;; Keyboard Interface
+	kbd_iface:
+		;; Stack frame
+		push rbp
+		mov rbp, rsp
+
+		;; Check if we're dealing with a keyboard event
+		lea eax, [EVENT + EVTT_OFF]
+		cmp dword [eax], EVT_KBD1
+		je .kdown
+
+		cmp dword [eax], EVT_KBD2
+		je .kup
+
+		jmp .end
+
+		;; If key was pressed ..
+		.kdown:
+
+			;; Put the effective address of the keycode (SDL_KeyboardEvent->SDL_Keysym->scancode)
+			lea rbx, [EVENT + KEVT_KSYM]
+
+			;; eax = keysym
+			mov eax, dword [rbx]
+			mov rbx, SCANCODE_UP
+			
+			;; Check for arrow up
+			cmp rax, rbx
+			jne .code_down
+
+			;; Put the left paddle in upward motion
+			mov dword [LPV], -1
+
+			jmp .end
+
+			;; Check if the key is downward arrow
+			.code_down:
+
+			lea rbx, [EVENT + KEVT_KSYM]
+
+			;; eax = keysym
+			mov eax, dword [rbx]
+			mov rbx, SCANCODE_DOWN
+
+			;; Check if the key is down arrow
+			cmp rax, rbx
+			jne .end
+
+			;; Make the left paddle move downwards
+			mov dword [LPV], 1
+
+		jmp .end
+
+		;; When a key was released, set the left paddle velocity to 0 (make it stop)
+		.kup:
+			lea rdi, DKBD
+			call printf
+			mov dword [LPV], 0
+
+		jmp .end
+
+		.end:
+
+		;; End of stack frame
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
+	checkwin:
+		;; New stack frame
+		push rbp
+		mov rbp, rsp
+
+		;; Check if the ball is  outside of the display (to the left)
+		;; = Player has lost
+		mov eax, [XB]
+		mov ebx, 0
+		cmp eax, ebx
+		jg .end
+
+		;; Put the back back at its origin (center of the screen)
+		mov dword [XB], XBORG
+		mov dword [YB], YBORG
+
+		.end:
+
+		;; Clear the stack frame
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
+	;; Delay Short While
+	;; btw this is a *very* bad way to do this.
+	delshw:
+		rdtsc
+		;; Stack frame
+		push rbp
+		mov rbp, rsp
+
+		;; The counter
+		mov rax, 0
+
+		.loop:
+			inc rax
+			cmp rax, 5000000
+			jl .loop
+
+		;; Clear the frame
+		mov rsp, rbp
+		pop rbp
+
+		ret
+
 	main:
 		;; Set up the stack frame
 		push rbp
 		mov rbp, rsp
+
+		lea rdi, WLCME
+		call printf
 
 		;; Clear the fields for the error handling function
 		;; to behave properly.
@@ -468,12 +738,18 @@ section .text
 				cmp dword [rax], EVT_QUIT
 				je .exit
 
+				call kbd_iface
+
 				jmp .event_loop
 
 			.continue:
 				call collide
+				call lpvel
 				call bapplyvel
+				call arpad
+				call checkwin
 				call drawall
+				call delshw
 
 		jmp .main_loop
 
